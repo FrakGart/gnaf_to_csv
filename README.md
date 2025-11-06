@@ -21,3 +21,5 @@ Inspired by [gnaf.sh](https://github.com/openaddresses/openaddresses/blob/master
 
 I wanted something that would be less fussy to use and also able to drop alias addresses.
 
+This script doesn't quite produce the same results as gnaf.sh, out of the 15,794,643 addresses there are 1,262 differences. [diffs_2025-08.csv](diffs_2025-08.csv) is the result of a [`qsv diff`](https://github.com/dathere/qsv). The gnaf.sh version has a number of missing postcodes and contains a number of odd looking number ranges containing no last number only a suffix eg 130B-B. There is a difference of opinion of where the split between the 3000 and 3004 postcodes is. The rest of the differences seem to be in the assigning to locality.
+

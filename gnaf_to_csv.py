@@ -11,14 +11,14 @@ logging.basicConfig(level=logging.INFO,
 
 def set_gnaf_loader_accuracy_codes():
 
-    df = pd.DataFrame({'GEOCODE_TYPE_CODE': ['BC', 'PC', 'FCS', 'PCM', 'PAPS', 'STL', 'GG', 'LOC', 'PAP', 'UC', 'EAS', 'DF', 'BAP', 'FC', 'LB', 'EA'], 'accuracy': [
-                      '1', '2', '2', '2', '3', '4', '4', '4', '5', '5', '5', '5', '5', '5', '5', '5']}, dtype='string')
+    df = pd.DataFrame({'GEOCODE_TYPE_CODE': ['BC', 'BCM', 'PC', 'FCS', 'PCM', 'PAPS', 'STL', 'GG', 'LOC', 'PAP', 'UC', 'EAS', 'DF', 'BAP', 'FC', 'LB', 'EA'], 'accuracy': [
+                      '1', '1', '2', '2', '2', '3', '4', '4', '4', '5', '5', '5', '5', '5', '5', '5', '5']}, dtype='string')
     df.set_index('GEOCODE_TYPE_CODE', inplace=True)
 
     return df
 
 
-def read_single_file(zip, zipfiles, name, pid):
+def read_single_file(zipfiles, name, pid):
 
     psv_path = next(zipfiles.rglob(name), None)
     if psv_path:
@@ -31,7 +31,7 @@ def read_single_file(zip, zipfiles, name, pid):
     return df
 
 
-def read_state_files(zip, zipfiles, name_postfix, pid):
+def read_state_files(zipfiles, name_postfix, pid):
 
     states = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'OT']
 
@@ -65,6 +65,8 @@ if __name__ == "__main__":
                         help='Drop the secondary addresses')
     parser.add_argument('-f', '--float', action='store_true',
                         help='Cast the lat/lon to a float so they can be written out with 8 decimal places')
+    parser.add_argument('-l', '--loc_pid', action='store_true',
+                        help='Add the locality pid to the output')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Output progress information while running')
 
@@ -78,18 +80,18 @@ if __name__ == "__main__":
         zipfiles = zipfile.Path(zip)
         logger.info(F'Reading from {args.zipfile}')
         addrs = read_state_files(
-            zip, zipfiles, '_ADDRESS_DETAIL_psv.psv', 'ADDRESS_DETAIL_PID')
+            zipfiles, '_ADDRESS_DETAIL_psv.psv', 'ADDRESS_DETAIL_PID')
         streets = read_state_files(
-            zip, zipfiles, '_STREET_LOCALITY_psv.psv', 'STREET_LOCALITY_PID')
+            zipfiles, '_STREET_LOCALITY_psv.psv', 'STREET_LOCALITY_PID')
         localities = read_state_files(
-            zip, zipfiles, '_LOCALITY_psv.psv', 'LOCALITY_PID')
-        states = read_state_files(zip, zipfiles, '_STATE_psv.psv', 'STATE_PID')
+            zipfiles, '_LOCALITY_psv.psv', 'LOCALITY_PID')
+        states = read_state_files(zipfiles, '_STATE_psv.psv', 'STATE_PID')
         geocodes = read_state_files(
-            zip, zipfiles, '_ADDRESS_DEFAULT_GEOCODE_psv.psv', 'ADDRESS_DETAIL_PID')
+            zipfiles, '_ADDRESS_DEFAULT_GEOCODE_psv.psv', 'ADDRESS_DETAIL_PID')
         street_suffixs = read_single_file(
-            zip, zipfiles, 'Authority_Code_STREET_SUFFIX_AUT_psv.psv', 'CODE')
+            zipfiles, 'Authority_Code_STREET_SUFFIX_AUT_psv.psv', 'CODE')
         flat_types = read_single_file(
-            zip, zipfiles, 'Authority_Code_FLAT_TYPE_AUT_psv.psv', 'CODE')
+            zipfiles, 'Authority_Code_FLAT_TYPE_AUT_psv.psv', 'CODE')
 
     logger.info('Building accuracy codes table')
     accuracy_codes = set_gnaf_loader_accuracy_codes()
@@ -109,7 +111,7 @@ if __name__ == "__main__":
 #   Fill missing postcodes
 
     logger.info('Mapping LOCALITY_PID to postcodes')
-    lookup_map = addrs.groupby('LOCALITY_PID')['postcode'].first()
+    lookup_map = addrs.groupby('LOCALITY_PID')['postcode'].agg(lambda s: s.value_counts().idxmax())
     logger.info('Filling missing postcodes')
     addrs['postcode'] = addrs['postcode'].fillna(
         addrs['LOCALITY_PID'].map(lookup_map))
@@ -190,10 +192,13 @@ if __name__ == "__main__":
         logger.info('Dropping the addresses that are secondary')
         logger.info(F'Number of addresses before: {len(addrs.index):,d}')
         addrs = addrs[addrs['PRIMARY_SECONDARY'].fillna('P') == 'P']
-        logger.info(F'Number of addresses after: {len(addrs.index)}:,d')
+        logger.info(F'Number of addresses after: {len(addrs.index):,d}')
 
     logger.info(F'Writing results to: {args.outfile}')
-    addrs[['number', 'street', 'unit', 'lon', 'lat', 'city', 'postcode',
-           'region', 'accuracy']].to_csv(args.outfile, float_format='%.8f')
+    out_list = ['number', 'street', 'unit', 'lon',
+                'lat', 'city', 'postcode', 'region', 'accuracy']
+    if args.loc_pid:
+        out_list.append('LOCALITY_PID')
+    addrs[out_list].to_csv(args.outfile, float_format='%.8f')
 
     logger.info('Finished')
